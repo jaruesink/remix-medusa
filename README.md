@@ -216,6 +216,61 @@ export * from './util';
 
 We should have done all we need to set up our component library and our first component. Now we can implement it with Remix and see how we can connect the data.
 
+## Step 4: Getting data from the Medusa Client
+
+The easiest way to get data out of Medusa is to use the client.
+
+Run `yarn add @medusajs/medusa-js -W` in our root to install the client.
+
+Now we can add a util function for our client in `libs/components/src/util/medusa-client.ts`:
+
+```ts
+import Medusa from '@medusajs/medusa-js';
+
+export const createMedusaClient = () => {
+  const BACKEND_URL =
+    process.env['PUBLIC_MEDUSA_URL'] || 'http://localhost:9000';
+  return new Medusa({ baseUrl: BACKEND_URL, maxRetries: 2 });
+};
+```
+
+Don't forget to export our new `medusa-client.ts` file from your `util/index.ts` file.
+
+Now let's replace our `our-remix/app/routes/index.ts` content with:
+
+```tsx
+import { json, LoaderArgs } from '@remix-run/node';
+import { useLoaderData } from '@remix-run/react';
+import { StoreProductsListRes } from '@medusajs/medusa';
+import { createMedusaClient, ProductListItem } from '@demo/components';
+
+export const loader = async (args: LoaderArgs) => {
+  const client = createMedusaClient();
+  const limit = 100;
+  const offset = 0;
+  const { products, count } = await client.products.list({ limit, offset });
+  return json({ products, count });
+};
+
+export default function ProductsIndexRoute() {
+  const { products, count } = useLoaderData<typeof loader>();
+
+  return (
+    <div className="p-6 xl:p-8">
+      <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 gap-x-6 lg:grid-cols-3 xl:grid-cols-4 xl:gap-x-8">
+        {products.map((product) => (
+          <ProductListItem key={product.id} product={product} />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+At this point we get a type error on "Product" when passing in a product to our ProductListItem due to some private properties that Medusa uses. We're still trying to figure out the best way to rectify these, so if anyone has ideas that would be great.
+
+However, we can now run `yarn start` and see an unstyled product list in our browser, which means we have successfully setup our Remix front-end, Medusa API, and utilized the client to get the data and render it on the page. 💯
+
 # NX Readme
 
 This project was generated using [Nx](https://nx.dev).
