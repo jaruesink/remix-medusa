@@ -40,5 +40,6 @@
   },
   "cli": {
     "defaultCollection": "@nrwl/remix"
-  }
+  },
+  "defaultProject": "api-medusa"
 }

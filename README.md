@@ -6,6 +6,74 @@ The main branch here will have all of the "final" code you need to pull down to 
 
 https://www.npmjs.com/package/@nrwl/remix
 
+Run this command to create a project in a new directory: `npx create-nx-workspace@latest --preset=@nrwl/remix --project=ui-remix`
+
+Add a serve target in your remix app project.json (nested under `"targets"`):
+
+```
+    "serve": {
+      "executor": "@nrwl/workspace:run-commands",
+      "options": {
+        "command": "npm run dev",
+        "cwd": "apps/ui-remix"
+      }
+    }
+```
+
+Now you can run `yarn start ui-remix` and the remix app will be running on `localhost:3000`.
+
+## Step 2: Add Medusa CLI & Medusa
+
+Run `yarn add @medusajs/medusa-cli -D -W` to add the CLI to the root of your project.
+
+Run `yarn add @nrwl/node -D -W` to add @nrwl/node to your application.
+
+Run `nx g @nrwl/node:application api-medusa` to initialize a new api-medusa application in your apps directory.
+
+Run `npx medusa new apps/api-medusa-copy --seed` to add initialize a Medusa project to your new api-medusa application.
+
+Delete the `tsconfig.json` in the api-medusa-copy folder. Then copy all of the files over into the `api-medusa` directory, replacing the src directory. Delete the empty api-medusa-copy folder and you should have all the required Medusa files within your `api-medusa` app.
+
+Replace the content of your `api-medusa/project.json` with:
+
+```
+{
+  "root": "apps/api-medusa",
+  "sourceRoot": "apps/api-medusa/src",
+  "projectType": "application",
+  "targets": {
+    "serve": {
+      "executor": "@nrwl/workspace:run-commands",
+      "options": {
+        "command": "yarn && yarn start",
+        "cwd": "apps/api-medusa"
+      }
+    },
+    "build": {
+      "executor": "@nrwl/workspace:run-commands",
+      "options": {
+        "command": "yarn && yarn build",
+        "cwd": "apps/api-medusa"
+      }
+    },
+    "seed": {
+      "executor": "@nrwl/workspace:run-commands",
+      "options": {
+        "command": "yarn && yarn seed",
+        "cwd": "apps/api-medusa"
+      }
+    }
+  },
+  "tags": []
+}
+```
+
+This maps our Medusa CLI commands for NX. Now we can setup a command to run both of our projects at the same time.
+
+In our root package.json file, we can update our start command to `npx nx run-many --target=serve --all`.
+
+If we have done everything right so far, we should have both our Remix app running on `localhost:3000` and our Medusa API running on `localhost:9000`.
+
 # NX Readme
 
 This project was generated using [Nx](https://nx.dev).
