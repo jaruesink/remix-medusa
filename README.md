@@ -10,7 +10,7 @@ Run this command to create a project in a new directory: `npx create-nx-workspac
 
 Add a serve target in your remix app project.json (nested under `"targets"`):
 
-```
+```json
     "serve": {
       "executor": "@nrwl/workspace:run-commands",
       "options": {
@@ -36,7 +36,7 @@ Delete the `tsconfig.json` in the api-medusa-copy folder. Then copy all of the f
 
 Replace the content of your `api-medusa/project.json` with:
 
-```
+```json
 {
   "root": "apps/api-medusa",
   "sourceRoot": "apps/api-medusa/src",
@@ -73,6 +73,148 @@ This maps our Medusa CLI commands for NX. Now we can setup a command to run both
 In our root package.json file, we can update our start command to `npx nx run-many --target=serve --all`.
 
 If we have done everything right so far, we should have both our Remix app running on `localhost:3000` and our Medusa API running on `localhost:9000`.
+
+## Step 3: Add a lib for components and set up a product-item
+
+Run `yarn nx generate @nrwl/js:library components --importPath=@demo/components --no-interactive` to create a new component library for our app.
+
+Inside of our new `libs/components/tsconfig.lib.json` file, we'll add `"jsx": "react-jsx",` nested under `"compilerOptions"`. This will allow us to have react components in our library.
+
+In order to utilize Medusa types in our components, we also want to run `yarn add @medusajs/medusa -W` to add Medusa to our root package.json.
+
+Let's create a util folder inside of our `libs/components/src` directory so we can utilize some helper functions for our components, such as our `prices.ts`. This will help us format pricing from Medusa as we build out our components.
+
+```ts
+import { Cart, LineItem } from '@medusajs/medusa';
+import { merge } from 'lodash';
+
+// TODO: Detect user language
+const locale = 'en-US';
+
+// TODO: Detect user currency/Allow currency selection (usd | eur)
+const regionCurrency = 'usd';
+
+export interface FormatPriceOptions {
+  currency?: Intl.NumberFormatOptions['currency'];
+  quantity?: number;
+}
+
+export function formatPrice(
+  amount?: number | null,
+  options?: FormatPriceOptions
+) {
+  const defaultOptions = {
+    currency: regionCurrency,
+    quantity: 1,
+  };
+  const { currency, quantity } = merge({}, defaultOptions, options);
+
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+  }).format(((amount || 0) / 100) * quantity);
+}
+
+export function formatVariantPrice(variant: any) {
+  const price = variant.prices.find(
+    (price: any) => price.currency_code == regionCurrency
+  );
+
+  if (!price) return null;
+
+  return formatPrice(price.amount);
+}
+
+export function formatLineItemPrice(lineItem: LineItem) {
+  return formatPrice(lineItem.unit_price, { quantity: lineItem.quantity });
+}
+
+export function formatCartSubtotal(cart: Cart) {
+  if (!cart.subtotal) return null;
+
+  return formatPrice(cart.subtotal);
+}
+```
+
+I like to create index nested index files, so I added a `util/index.ts` that contains:
+
+```ts
+export * from './prices';
+```
+
+Next in our `libs/components/src/lib` directory we can create a product-item.tsx:
+
+```tsx
+import { formatVariantPrice } from '../util';
+import type { Product } from '@medusajs/medusa';
+
+export interface ProductListItemContentProps {
+  product: Product;
+}
+
+export interface ProductListItemProps extends ProductListItemContentProps {
+  className?: string;
+  renderWrapper?: (
+    props: React.PropsWithChildren<{ className?: string }>
+  ) => JSX.Element;
+}
+
+const ProductListItemContent: React.FC<ProductListItemContentProps> = ({
+  product,
+}) => {
+  // Note: currently variant prices do not come in while searching https://github.com/medusajs/medusa/issues/1484
+  const variant = product.variants[0];
+
+  return (
+    <div className="group">
+      {product.thumbnail && (
+        <div className="w-full aspect-w-1 aspect-h-1 border rounded-lg overflow-hidden xl:aspect-w-7 xl:aspect-h-8">
+          <img
+            src={product.thumbnail}
+            alt={product.title}
+            className="w-full h-full object-center object-cover group-hover:opacity-75"
+          />
+        </div>
+      )}
+      <h3 className="mt-4 text-sm text-gray-700">{product.title}</h3>
+      {variant.prices && (
+        <p className="mt-1 text-lg font-medium text-gray-900">
+          {formatVariantPrice(variant)}
+        </p>
+      )}
+    </div>
+  );
+};
+
+export const ProductListItem: React.FC<ProductListItemProps> = ({
+  product,
+  renderWrapper: Wrapper,
+}) => {
+  if (Wrapper)
+    return (
+      <Wrapper>
+        <ProductListItemContent product={product} />
+      </Wrapper>
+    );
+
+  return <ProductListItemContent product={product} />;
+};
+```
+
+I also added a `lib/index.ts` that contains:
+
+```ts
+export * from './product-item';
+```
+
+Now in our `libs/components/src/index.ts` we can export our components and utils like such:
+
+```ts
+export * from './lib';
+export * from './util';
+```
+
+We should have done all we need to set up our component library and our first component. Now we can implement it with Remix and see how we can connect the data.
 
 # NX Readme
 
