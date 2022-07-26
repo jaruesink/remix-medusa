@@ -74,7 +74,7 @@ In our root package.json file, we can update our start command to `npx nx run-ma
 
 If we have done everything right so far, we should have both our Remix app running on `localhost:3000` and our Medusa API running on `localhost:9000`.
 
-## Step 3: Add a lib for components and set up a product-item
+## Step 3: Add a lib for components, set up a product-item, and render a product list
 
 Run `yarn nx generate @nrwl/js:library components --importPath=@demo/components --no-interactive` to create a new component library for our app.
 
@@ -216,8 +216,6 @@ export * from './util';
 
 We should have done all we need to set up our component library and our first component. Now we can implement it with Remix and see how we can connect the data.
 
-## Step 4: Getting data from the Medusa Client
-
 The easiest way to get data out of Medusa is to use the client.
 
 Run `yarn add @medusajs/medusa-js -W` in our root to install the client.
@@ -270,6 +268,69 @@ export default function ProductsIndexRoute() {
 At this point we get a type error on "Product" when passing in a product to our ProductListItem due to some private properties that Medusa uses. We're still trying to figure out the best way to rectify these, so if anyone has ideas that would be great.
 
 However, we can now run `yarn start` and see an unstyled product list in our browser, which means we have successfully setup our Remix front-end, Medusa API, and utilized the client to get the data and render it on the page. 💯
+
+## Step 4: Setting Up Tailwind
+
+Make sure you have everything we need for Tailwind installed by running `yarn add @nrwl/react tailwindcss @tailwindcss/typography @tailwindcss/forms @tailwindcss/aspect-ratio concurrently -D -W`.
+
+Now cd into `apps/ui-remix` and run `npx tailwindcss init`.
+
+Copy the following content into the new `tailwind.config.js` file that was created:
+
+```ts
+const { createGlobPatternsForDependencies } = require('@nrwl/react/tailwind');
+
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './app/**/*.{ts,tsx,jsx,js}',
+    ...createGlobPatternsForDependencies(__dirname),
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [
+    require('@tailwindcss/typography'),
+    require('@tailwindcss/forms'),
+    require('@tailwindcss/aspect-ratio'),
+  ],
+};
+```
+
+Create a `ui-remix/app/styles/tailwind.css` file with the following content:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+We'll have to set up some scripts to get tailwind css generating automatically while building and developing. Within your `ui-remix/package.json`, make sure your scripts match the following:
+
+```json
+{
+  "build": "npm run build:css && npx remix build",
+  "build:css": "tailwindcss -m -i ./app/styles/tailwind.css -o app/tailwind.css --config ./tailwind.config.js",
+  "dev": "concurrently \"npm run dev:css\" \"npx remix dev\"",
+  "dev:css": "tailwindcss -w -i ./app/styles/tailwind.css -o app/tailwind.css --config ./tailwind.config.js",
+  "postinstall": "npx remix setup node",
+  "start": "npx remix-serve build"
+}
+```
+
+Let's also add a line with `app/tailwind.css` to our `ui-remix/.gitignore` file so we don't include our generated tailwind output css.
+
+Now all that's left is to import the styles and link the stylesheet in our `ui-remix/app/root.tsx` file:
+
+```ts
+import styles from './tailwind.css';
+
+export function links() {
+  return [{ rel: 'stylesheet', href: styles }];
+}
+```
+
+Once the stylesheet is linked, we should be able to see our purged tailwind styles included on our page and a nice product list grid.
 
 # NX Readme
 
