@@ -16,13 +16,12 @@
     "start:prod": "node src/main.js"
   },
   "dependencies": {
-    "@medusajs/medusa": "^1.3.4",
-    "@medusajs/medusa-cli": "^1.3.1",
-    "medusa-fulfillment-manual": "^1.1.31",
-    "medusa-interfaces": "^1.3.1",
-    "medusa-payment-manual": "^1.0.16",
-    "medusa-payment-stripe": "^1.1.41",
-    "typeorm": "^0.2.36"
+    "@medusajs/medusa": "*",
+    "medusa-fulfillment-manual": "*",
+    "medusa-interfaces": "*",
+    "medusa-payment-manual": "*",
+    "medusa-payment-stripe": "*",
+    "typeorm": "*"
   },
   "repository": "https://github.com/medusajs/medusa-starter-default.git",
   "keywords": [
@@ -32,9 +31,10 @@
     "medusa"
   ],
   "devDependencies": {
-    "@babel/cli": "^7.14.3",
-    "@babel/core": "^7.14.3",
-    "@babel/preset-typescript": "^7.14.5",
-    "babel-preset-medusa-package": "^1.1.19"
+    "@babel/cli": "*",
+    "@babel/core": "*",
+    "@babel/preset-typescript": "*",
+    "@medusajs/medusa-cli": "*",
+    "babel-preset-medusa-package": "*"
   }
 }

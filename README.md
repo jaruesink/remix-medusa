@@ -547,6 +547,316 @@ Now if you run `yarn first-init`, you should get a docker environment setup with
 
 If you get an error running `yarn first-init`, you might need to run `yarn nukedb` and ``chmod +x dev/postgres-init.sh`, then try again.
 
+## Step 6: Optimizing Our Search
+
+Currently when typing in our search input, a page refresh is required before the search works. We can utilize a `useEffect` to update the page data with the information returned from the loader. Notice the `action="/?index"` on the form is how Remix knows that we are targeting our index file to refetch data with our get form submission.
+
+```tsx
+import { json, LoaderArgs } from '@remix-run/node';
+import { useFetcher, useLoaderData } from '@remix-run/react';
+import { createMedusaClient, Input, ProductListItem } from '@demo/components';
+import { useState } from 'react';
+import { useEffect } from 'react';
+
+export const loader = async ({ request }: LoaderArgs) => {
+  const url = new URL(request.url);
+  const searchTerm = url.searchParams.get('term');
+
+  const client = createMedusaClient();
+  const limit = 100;
+  const offset = 0;
+
+  const { products, count } = await client.products.list({
+    q: searchTerm ? `${searchTerm}` : undefined,
+    limit,
+    offset,
+  });
+  return json({ products, count, searchTerm });
+};
+
+export default function ProductsIndexRoute() {
+  const pageData = useLoaderData<typeof loader>();
+  const productSearch = useFetcher();
+  const [data, setData] = useState(pageData);
+
+  const submitProductSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (typeof window !== undefined) {
+      const url = new URL(window.location.href);
+      if (!event.target.value) url.searchParams.delete('term');
+      else url.searchParams.set('term', event.target.value);
+      window.history.replaceState({}, '', url.href);
+    }
+    productSearch.submit(event.target.form);
+  };
+
+  useEffect(() => {
+    if (productSearch?.data) setData(productSearch.data);
+  }, [productSearch]);
+
+  return (
+    <div className="p-6 xl:p-8">
+      <div className="mb-8">
+        <productSearch.Form method="get" action="/?index">
+          <Input
+            autoComplete="off"
+            type="text"
+            name="term"
+            value={undefined}
+            onChange={submitProductSearch}
+            defaultValue={data.searchTerm || ''}
+            placeholder="Search products..."
+          />
+        </productSearch.Form>
+      </div>
+
+      <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 gap-x-6 lg:grid-cols-3 xl:grid-cols-4 xl:gap-x-8">
+        {data.products.map((product) => (
+          <ProductListItem key={product.id} product={product} />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+This works pretty well, but it runs a lot of requests when typing. Debouncing the function is an easy way to optimize searches and have them feel a little more natural.
+
+Run `yarn add use-debounce -W` to add use-debounce to the project and then we can utilize the useDebouncedCallback function like:
+
+```tsx
+import { json, LoaderArgs } from '@remix-run/node';
+import { useFetcher, useLoaderData } from '@remix-run/react';
+import { createMedusaClient, Input, ProductListItem } from '@demo/components';
+import { useState, useEffect } from 'react';
+import { useDebouncedCallback } from 'use-debounce';
+
+export const loader = async ({ request }: LoaderArgs) => {
+  const url = new URL(request.url);
+  const searchTerm = url.searchParams.get('term');
+
+  const client = createMedusaClient();
+  const limit = 100;
+  const offset = 0;
+
+  const { products, count } = await client.products.list({
+    q: searchTerm ? `${searchTerm}` : undefined,
+    limit,
+    offset,
+  });
+  return json({ products, count, searchTerm });
+};
+
+export default function ProductsIndexRoute() {
+  const pageData = useLoaderData<typeof loader>();
+  const productSearch = useFetcher();
+  const [data, setData] = useState(pageData);
+
+  const submitProductSearch = useDebouncedCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (typeof window !== undefined) {
+        const url = new URL(window.location.href);
+        if (!event.target.value) url.searchParams.delete('term');
+        else url.searchParams.set('term', event.target.value);
+        window.history.replaceState({}, '', url.href);
+      }
+      productSearch.submit(event.target.form);
+    },
+    200,
+    { leading: true }
+  );
+
+  useEffect(() => {
+    if (productSearch?.data) setData(productSearch.data);
+  }, [productSearch]);
+
+  return (
+    <div className="p-6 xl:p-8">
+      <div className="mb-8">
+        <productSearch.Form method="get" action="/?index">
+          <Input
+            autoComplete="off"
+            type="text"
+            name="term"
+            value={undefined}
+            onChange={submitProductSearch}
+            defaultValue={data.searchTerm || ''}
+            placeholder="Search products..."
+          />
+        </productSearch.Form>
+      </div>
+
+      <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 gap-x-6 lg:grid-cols-3 xl:grid-cols-4 xl:gap-x-8">
+        {data.products.map((product) => (
+          <ProductListItem key={product.id} product={product} />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+At this point in the setup, I was getting a React Hooks error with multiple versions or React installed and then some random error with Babel compilation.
+
+NX likes to have all of your dependencies install in the root and works pretty well with yarn workspaces. I also noticed that `apps/*` wasn't defined in the workspaces for our root package.json.
+
+Project root `package.json`:
+
+```json
+{
+  "name": "demo",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "nukedb": "docker compose down -v && yarn compose",
+    "first-init": "yarn setup && yarn seed && yarn develop",
+    "setup": "yarn && yarn compose && nx run api-medusa:migrate",
+    "seed": "nx run api-medusa:seed",
+    "compose": "docker compose up -d ",
+    "develop": "yarn setup && yarn start",
+    "start": "npx nx run-many --target=serve --all",
+    "build": "nx build",
+    "test": "nx test",
+    "postinstall": "remix setup node",
+    "clean": "npx nx run-many --target=clean --all && find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' + && yarn"
+  },
+  "private": true,
+  "dependencies": {
+    "@medusajs/medusa-js": "^1.2.3",
+    "@medusajs/medusa": "^1.3.4",
+    "@nrwl/remix": "14.4.2",
+    "@remix-run/react": "^1.0.6",
+    "@remix-run/serve": "^1.0.6",
+    "classnames": "^2.3.1",
+    "medusa-interfaces": "^1.3.1",
+    "medusa-payment-manual": "^1.0.16",
+    "medusa-payment-stripe": "^1.1.41",
+    "react-dom": "^17.0.2",
+    "react": "^17.0.2",
+    "remix": "^1.0.6",
+    "tslib": "^2.3.0",
+    "typeorm": "^0.2.36",
+    "use-debounce": "^8.0.3"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.14.3",
+    "@babel/core": "^7.14.3",
+    "@babel/preset-typescript": "^7.18.6",
+    "@medusajs/medusa-cli": "^1.3.1",
+    "@nrwl/cli": "14.4.3",
+    "@nrwl/eslint-plugin-nx": "14.4.3",
+    "@nrwl/jest": "14.4.3",
+    "@nrwl/linter": "14.4.3",
+    "@nrwl/node": "^14.4.3",
+    "@nrwl/react": "^14.4.3",
+    "@nrwl/workspace": "14.4.3",
+    "@remix-run/dev": "^1.0.6",
+    "@tailwindcss/aspect-ratio": "^0.4.0",
+    "@tailwindcss/forms": "^0.5.2",
+    "@tailwindcss/typography": "^0.5.4",
+    "@types/jest": "27.4.1",
+    "@types/node": "16.11.7",
+    "@types/react-dom": "^17.0.9",
+    "@types/react": "^17.0.24",
+    "@typescript-eslint/eslint-plugin": "^5.29.0",
+    "@typescript-eslint/parser": "^5.29.0",
+    "babel-preset-medusa-package": "^1.1.19",
+    "concurrently": "^7.3.0",
+    "eslint-config-prettier": "8.1.0",
+    "eslint": "~8.15.0",
+    "jest": "27.5.1",
+    "nx": "14.4.3",
+    "prettier": "^2.6.2",
+    "tailwindcss": "^3.1.6",
+    "ts-jest": "27.1.4",
+    "ts-node": "~10.8.0",
+    "typescript": "~4.7.2"
+  },
+  "workspaces": ["apps/*", "libs/*"]
+}
+```
+
+`api-medusa/package.json`:
+
+```json
+{
+  "name": "medusa-starter-default",
+  "version": "0.0.1",
+  "description": "A starter for Medusa projects.",
+  "author": "Sebastian Rindom <skrindom@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "seed": "medusa seed -f ./data/seed.json",
+    "build": "rm -rf dist && ./node_modules/.bin/tsc -p tsconfig.json",
+    "build-local": "rm -rf dist && ./node_modules/.bin/tsc -p tsconfig.dev.json",
+    "start": "medusa develop",
+    "migrate": "yarn medusa:migrate && yarn medex:migrate",
+    "medusa:migrate": "medusa migrations run",
+    "medex:migrate": "medex migrate --run",
+    "seed:prod": "node src/seed.js",
+    "start:prod": "node src/main.js"
+  },
+  "dependencies": {
+    "@medusajs/medusa": "*",
+    "medusa-fulfillment-manual": "*",
+    "medusa-interfaces": "*",
+    "medusa-payment-manual": "*",
+    "medusa-payment-stripe": "*",
+    "typeorm": "*"
+  },
+  "repository": "https://github.com/medusajs/medusa-starter-default.git",
+  "keywords": ["sqlite", "ecommerce", "headless", "medusa"],
+  "devDependencies": {
+    "@babel/cli": "*",
+    "@babel/core": "*",
+    "@babel/preset-typescript": "*",
+    "@medusajs/medusa-cli": "*",
+    "babel-preset-medusa-package": "*"
+  }
+}
+```
+
+`ui-remix/package.json`:
+
+```json
+{
+  "private": true,
+  "name": "ui-remix",
+  "description": "",
+  "license": "",
+  "scripts": {
+    "build": "npm run build:css && npx remix build",
+    "build:css": "tailwindcss -m -i ./app/styles/tailwind.css -o app/tailwind.css --config ./tailwind.config.js",
+    "dev": "concurrently \"npm run dev:css\" \"npx remix dev\"",
+    "dev:css": "tailwindcss -w -i ./app/styles/tailwind.css -o app/tailwind.css --config ./tailwind.config.js",
+    "postinstall": "npx remix setup node",
+    "start": "npx remix-serve build"
+  },
+  "dependencies": {
+    "@remix-run/react": "*",
+    "@remix-run/serve": "*",
+    "react": "*",
+    "react-dom": "*",
+    "remix": "*"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "typescript": "*"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "sideEffects": false
+}
+```
+
+Notice how all of the child `package.json` packages can use "\*" to point to the same version as the root `package.json`. You can override versions if needed in rare circumstances, but this is very helpful when you want everything to use the same versions of packages.
+
+In the root, you can run `yarn clean` to clear out all node_modules and run a fresh install.
+
+After refactoring, we should be able to run `yarn start` and get everything running smoothly again. Notice our search is debouncing properly and the search works and feels great.
+
 # NX Readme
 
 This project was generated using [Nx](https://nx.dev).
