@@ -1,21 +1,9 @@
-FROM node:17.1.0
-
-WORKDIR /app/medusa
-
-COPY package.json .
-COPY develop.sh .
-COPY yarn.* .
-
-RUN apt-get update
-
-RUN apt-get install -y python
-
-RUN npm install -g npm@latest
-
-RUN npm install -g @medusajs/medusa-cli@latest
-
-RUN npm install
-
-COPY . .
-
-ENTRYPOINT ["./develop.sh"]
+FROM node:14
+WORKDIR /app
+COPY ./dist/apps/home/api-medusa/package.json ./
+COPY ./dist/apps/home/api-medusa/yarn.lock ./
+RUN yarn install --frozen-lockfile --non-interactive
+COPY ./dist/apps/home/api-medusa/ ./
+ENV PORT=80
+EXPOSE ${PORT}
+CMD yarn start:prod

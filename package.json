@@ -3,10 +3,17 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
+    "nukedb": "docker compose down -v && yarn compose",
+    "first-init": "yarn setup && yarn seed && yarn develop",
+    "setup": "yarn && yarn compose && nx run api-medusa:migrate",
+    "seed": "nx run api-medusa:seed",
+    "compose": "docker compose up -d ",
+    "develop": "yarn setup && yarn start",
     "start": "npx nx run-many --target=serve --all",
     "build": "nx build",
     "test": "nx test",
-    "postinstall": "remix setup node"
+    "postinstall": "remix setup node",
+    "clean": "npx nx run-many --target=clean --all && find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' + && yarn"
   },
   "private": true,
   "dependencies": {
@@ -15,6 +22,7 @@
     "@nrwl/remix": "14.4.2",
     "@remix-run/react": "^1.0.6",
     "@remix-run/serve": "^1.0.6",
+    "classnames": "^2.3.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "remix": "^1.0.6",

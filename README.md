@@ -239,7 +239,6 @@ Now let's replace our `our-remix/app/routes/index.ts` content with:
 ```tsx
 import { json, LoaderArgs } from '@remix-run/node';
 import { useLoaderData } from '@remix-run/react';
-import { StoreProductsListRes } from '@medusajs/medusa';
 import { createMedusaClient, ProductListItem } from '@demo/components';
 
 export const loader = async (args: LoaderArgs) => {
@@ -331,6 +330,222 @@ export function links() {
 ```
 
 Once the stylesheet is linked, we should be able to see our purged tailwind styles included on our page and a nice product list grid.
+
+## Step 5: Search Input and Postgres
+
+Let's quickly add an Input component to our lib so we can use it for our search.
+
+I don't think we have added classnames to our project yet, but it is very helpful when working with lots of style classes like with Tailwind. We can run `yarn add classnames -W` in our project root to install it.
+
+Add an `input.tsx` to our `libs/components/src/lib` directory:
+
+```tsx
+import React from 'react';
+import { forwardRef, InputHTMLAttributes } from 'react';
+import classNames from 'classnames';
+
+export const Input = forwardRef<
+  HTMLInputElement,
+  InputHTMLAttributes<HTMLInputElement>
+>(({ className, ...props }, ref) => (
+  <input
+    ref={ref}
+    {...props}
+    className={classNames(
+      'block w-full h-10 px-3 text-base sm:text-sm border border-gray-300 rounded-md shadow-sm outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500',
+      className
+    )}
+  />
+));
+```
+
+Let's export our new input component from our `lib/index.ts` file by adding the line `export * from './input';`.
+
+We can implement a Remix form by using the useFetcher hook, we'll go through several iterations of our `routes/index.ts` page to see how everything fits together. In this first iteration, we implement an onChange function to update the searchTerm in a queryParam and pass it back to the loader.
+
+```tsx
+import { json, LoaderArgs } from '@remix-run/node';
+import { useFetcher, useLoaderData } from '@remix-run/react';
+import { createMedusaClient, Input, ProductListItem } from '@demo/components';
+
+export const loader = async ({ request }: LoaderArgs) => {
+  const url = new URL(request.url);
+  const searchTerm = url.searchParams.get('term');
+
+  const client = createMedusaClient();
+  const limit = 100;
+  const offset = 0;
+  const { products, count } = await client.products.list({ q: searchTerm ? `${searchTerm}` : undefined,, limit, offset });
+  return json({ products, count, searchTerm });
+};
+
+export default function ProductsIndexRoute() {
+  const { products, count, searchTerm } = useLoaderData<typeof loader>();
+  const productSearch = useFetcher<typeof loader>();
+
+  const submitProductSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (typeof window !== undefined) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('page');
+      if (!event.target.value) url.searchParams.delete('term');
+      else url.searchParams.set('term', event.target.value);
+      window.history.replaceState({}, '', url.href);
+    }
+    productSearch.submit(event.target.form);
+  };
+
+  return (
+    <div className="p-6 xl:p-8">
+      <div className="mb-8">
+        <productSearch.Form method="get" action="/search?index">
+          <Input
+            autoComplete="off"
+            type="text"
+            name="term"
+            value={undefined}
+            onChange={submitProductSearch}
+            defaultValue={searchTerm || ''}
+            placeholder="Search products..."
+          />
+        </productSearch.Form>
+      </div>
+
+      <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 gap-x-6 lg:grid-cols-3 xl:grid-cols-4 xl:gap-x-8">
+        {products.map((product) => (
+          <ProductListItem key={product.id} product={product} />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+Unfortunately, this is where we have to switch over from the sqlite database to postgres, because Medusa implements ILIKE in their client for querying which is only a term in postgres.
+
+We can easily setup a local dev environment with Docker.
+
+Now you can delete the `medusa-db.sql`, because we'll be setting up a new database and seeding it separately.
+
+Let's go ahead and change the line with `.env` in our `api-medusa/.gitignore` file to `.env.*` so we can commit our env with these local development environment variables.
+
+Now you can update the `api-medusa/.env` to:
+
+```
+PUBLIC_MEDUSA_URL="http://localhost:9000"
+MEDUSA_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/demo"
+MEDUSA_REDIS_URL="redis://:password@localhost:6379"
+```
+
+Make sure the `DATABASE_URL` in your `medusa-config.js` is set to equal `process.env.MEDUSA_DATABASE_URL`.
+
+Inside of your project root, create a `docker-compose.yml` file with:
+
+```yml
+version: '3.8'
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: backend:starter
+    container_name: medusa-server-default
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/medusa-docker
+      REDIS_URL: redis://redis
+      NODE_ENV: development
+      JWT_SECRET: something
+      COOKIE_SECRET: something
+      PORT: 9000
+    ports:
+      - '9000:9000'
+    volumes:
+      - .:/app/medusa
+      - node_modules:/app/medusa/node_modules
+
+  postgres:
+    image: postgres:10.4
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: medusa-docker
+
+  redis:
+    image: redis
+    expose:
+      - 6379
+
+volumes:
+  node_modules:
+```
+
+We also have a script to initialize a database within your postgres image. Also in root, create a `dev` folder and inside add a `postgres-init.sh` file with:
+
+```sh
+#!/bin/bash
+set -e
+
+psql -v ON_ERROR_STOP=1 --username "postgres" --dbname "postgres" <<-EOSQL
+    CREATE DATABASE "demo";
+EOSQL
+```
+
+We can update our `module.exports` in our `medusa-config.js` file to:
+
+```js
+module.exports = {
+  projectConfig: {
+    redis_url: REDIS_URL,
+    database_url: DATABASE_URL,
+    database_type: 'postgres',
+    store_cors: STORE_CORS,
+    admin_cors: ADMIN_CORS,
+  },
+  plugins,
+};
+```
+
+Here are scripts that we use for `medusa-api/package.json`:
+
+```json
+{
+  "seed": "medusa seed -f ./data/seed.json",
+  "build": "rm -rf dist && ./node_modules/.bin/tsc -p tsconfig.json",
+  "build-local": "rm -rf dist && ./node_modules/.bin/tsc -p tsconfig.dev.json",
+  "start": "medusa develop",
+  "migrate": "yarn medusa:migrate && yarn medex:migrate",
+  "medusa:migrate": "medusa migrations run",
+  "medex:migrate": "medex migrate --run",
+  "seed:prod": "node src/seed.js",
+  "start:prod": "node src/main.js"
+}
+```
+
+Finally, in our root `package.json`, here are some helpful scripts for setting up and running the project:
+
+```json
+{
+  "nukedb": "docker compose down -v && yarn compose",
+  "first-init": "yarn setup && yarn seed && yarn develop",
+  "setup": "yarn && yarn compose && nx run api-medusa:migrate",
+  "seed": "nx run api-medusa:seed",
+  "compose": "docker compose up -d",
+  "develop": "yarn setup && yarn start",
+  "start": "npx nx run-many --target=serve --all",
+  "build": "nx build",
+  "test": "nx test",
+  "postinstall": "remix setup node",
+  "clean": "npx nx run-many --target=clean --all && find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' + && yarn"
+}
+```
+
+Now if you run `yarn first-init`, you should get a docker environment setup with the data seeded. Once that is run, on subsequent times you can just run `yarn start`.
+
+If you get an error running `yarn first-init`, you might need to run `yarn nukedb` and ``chmod +x dev/postgres-init.sh`, then try again.
 
 # NX Readme
 
