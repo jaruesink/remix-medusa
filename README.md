@@ -857,6 +857,215 @@ In the root, you can run `yarn clean` to clear out all node_modules and run a fr
 
 After refactoring, we should be able to run `yarn start` and get everything running smoothly again. Notice our search is debouncing properly and the search works and feels great.
 
+## Step 7: Cookies for your cart
+
+Every time a customer comes to your site, they will need a cart. This cart will either exist already in Medusa or need to be created. In the same directory as your `ui-remix/root.tsx`, let's create a new `cart.server.ts` file for some helper functions to make this easier:
+
+```ts
+import { StoreCartsRes } from '@medusajs/medusa';
+import Medusa from '@medusajs/medusa-js';
+import { createCookie } from 'remix';
+
+export const fetchOrCreateCart: (
+  cartId: string,
+  medusa: Medusa
+) => Promise<StoreCartsRes['cart']> = async (cartId, medusa) => {
+  if (!cartId) return (await medusa.carts.create({})).cart;
+
+  let cart;
+  try {
+    const response = await medusa.carts.retrieve(cartId);
+    cart = response.cart;
+  } catch (e) {
+    // no cart with that id.
+  }
+  return cart ? cart : (await medusa.carts.create({})).cart;
+};
+
+export const cartIdCookie = createCookie('cart-id', {
+  maxAge: 604_800, // one week
+});
+```
+
+Now we can add a loader function to our `ui-remix/root.tsx` file that can utilize our helper functions to create a cart and cookie setup to save the cart id in a cookie:
+
+```ts
+import { json } from '@remix-run/node';
+import type { MetaFunction } from '@remix-run/node';
+import {
+  Links,
+  LiveReload,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  useLoaderData,
+} from '@remix-run/react';
+import { LoaderArgs } from 'remix';
+import { createMedusaClient } from '@demo/components';
+import { cartIdCookie, fetchOrCreateCart } from './cart.server';
+import styles from './tailwind.css';
+import { createContext } from 'react';
+import { Cart } from '@medusajs/medusa';
+
+export function links() {
+  return [{ rel: 'stylesheet', href: styles }];
+}
+
+export const meta: MetaFunction = () => ({
+  charset: 'utf-8',
+  title: 'New Remix App',
+  viewport: 'width=device-width,initial-scale=1',
+});
+
+export const loader = async ({ request }: LoaderArgs) => {
+  const medusa = createMedusaClient();
+  const cookieHeader = request.headers.get('Cookie');
+  const cartId = await cartIdCookie.parse(cookieHeader);
+  const cart = await fetchOrCreateCart(cartId, medusa);
+  const headers = new Headers();
+  if (cart?.id && cart?.id !== cartId)
+    headers.set('Set-Cookie', await cartIdCookie.serialize(cart.id));
+  return json({ cart }, { headers });
+};
+
+// @ts-ignore: this data will always be initialized so we don't need
+const cartContext = createContext<Cart>(null);
+
+export default function App() {
+  const { cart } = useLoaderData<typeof loader>();
+
+  return (
+    <html lang="en">
+      <head>
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        <cartContext.Provider value={cart}>
+          <Outlet />
+        </cartContext.Provider>
+        <ScrollRestoration />
+        <Scripts />
+        <LiveReload />
+      </body>
+    </html>
+  );
+}
+```
+
+Now that we have our cartContext provider setup, we can update our index with a form to a add items to the cart:
+
+```ts
+import { json, LoaderArgs } from '@remix-run/node';
+import { Form, useFetcher, useLoaderData } from '@remix-run/react';
+import { createMedusaClient, Input, ProductListItem } from '@demo/components';
+import { useState, useEffect, useContext } from 'react';
+import { useDebouncedCallback } from 'use-debounce';
+import { cartContext } from '~/root';
+import { ActionArgs } from 'remix';
+
+export const loader = async ({ request }: LoaderArgs) => {
+  const url = new URL(request.url);
+  const searchTerm = url.searchParams.get('term');
+
+  const client = createMedusaClient();
+  const limit = 100;
+  const offset = 0;
+
+  const { products, count } = await client.products.list({
+    q: searchTerm ? `${searchTerm}` : undefined,
+    limit,
+    offset,
+  });
+  return json({ products, count, searchTerm });
+};
+
+export async function action({ request }: ActionArgs) {
+  const client = createMedusaClient();
+  const formData = await request.formData();
+  const cartId = formData.get('cartId') as string;
+  const productId = formData.get('productId') as string;
+  const { product } = await client.products.retrieve(productId || '');
+
+  const { cart } = await client.carts.lineItems.create(cartId, {
+    variant_id: product.variants[0].id,
+    quantity: 1,
+  });
+
+  return json(cart);
+}
+
+export default function ProductsIndexRoute() {
+  const pageData = useLoaderData<typeof loader>();
+  const productSearch = useFetcher();
+  const addProductToCart = useFetcher();
+  const [data, setData] = useState(pageData);
+  const cart = useContext(cartContext);
+
+  const submitProductSearch = useDebouncedCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (typeof window !== undefined) {
+        const url = new URL(window.location.href);
+        if (!event.target.value) url.searchParams.delete('term');
+        else url.searchParams.set('term', event.target.value);
+        window.history.replaceState({}, '', url.href);
+      }
+      productSearch.submit(event.target.form);
+    },
+    200,
+    { leading: true }
+  );
+
+  useEffect(() => {
+    if (productSearch?.data) setData(productSearch.data);
+  }, [productSearch]);
+
+  return (
+    <div className="p-6 xl:p-8">
+      <div className="mb-8">
+        <productSearch.Form method="get" action="/?index">
+          <Input
+            autoComplete="off"
+            type="text"
+            name="term"
+            value={undefined}
+            onChange={submitProductSearch}
+            defaultValue={data.searchTerm || ''}
+            placeholder="Search products..."
+          />
+        </productSearch.Form>
+      </div>
+
+      <p>
+        Items in cart:{' '}
+        {cart?.items.reduce((acc, item) => acc + item.quantity, 0)}
+      </p>
+
+      <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 gap-x-6 lg:grid-cols-3 xl:grid-cols-4 xl:gap-x-8">
+        {data.products.map((product) => (
+          <addProductToCart.Form
+            key={product.id}
+            method="post"
+            action="/?index"
+          >
+            <ProductListItem product={product} />
+            <input type="hidden" name="productId" value={product.id} />
+            <input type="hidden" name="cartId" value={cart?.id} />
+            <button
+              className="w-full bg-indigo-600 border border-transparent rounded-md py-3 mt-2 flex items-center justify-center text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              type="submit"
+            >
+              Add to cart
+            </button>
+          </addProductToCart.Form>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
 # NX Readme
 
 This project was generated using [Nx](https://nx.dev).
