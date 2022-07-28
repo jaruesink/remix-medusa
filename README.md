@@ -1,6 +1,8 @@
 # 👋 Welcome to my Remix Medusa example repository
 
-The main branch here will have all of the "final" code you need to pull down to see the example. This is being created for a talk on Remix, so I won't dive too deep into the Medusa code. I'm not including the Medusa Admin (https://github.com/medusajs/admin), but it could be included as an app in this monorepo also.
+Check the PRs and `step-7` for the final branch so far. You can pull down the main repo and follow along in the readme, or pull down `step-7` to run the latest. Docker is required for the later steps. Feel free to follow me [@\_jakeCodes](https://twitter.com/_jakeCodes) and reach out if you have any questions or think something is missing/complicated. A lot is missing, and it would take forever to cover all of the features, but this is meant to get you started in a way that you can keep learning and improving.
+
+This is being created for a talk on Remix, so I won't dive too deep into the Medusa code. I'm not including the Medusa Admin (https://github.com/medusajs/admin), but it could be included as an app in this monorepo also.
 
 ## Step 1: Initialize NX Remix
 
