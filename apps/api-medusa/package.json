@@ -1,0 +1,40 @@
+{
+  "name": "medusa-starter-default",
+  "version": "0.0.1",
+  "description": "A starter for Medusa projects.",
+  "author": "Sebastian Rindom <skrindom@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "seed": "medusa seed -f ./data/seed.json",
+    "build": "rm -rf dist && ./node_modules/.bin/tsc -p tsconfig.json",
+    "build-local": "rm -rf dist && ./node_modules/.bin/tsc -p tsconfig.dev.json",
+    "start": "medusa develop",
+    "migrate": "yarn medusa:migrate && yarn medex:migrate",
+    "medusa:migrate": "medusa migrations run",
+    "medex:migrate": "medex migrate --run",
+    "seed:prod": "node src/seed.js",
+    "start:prod": "node src/main.js"
+  },
+  "dependencies": {
+    "@medusajs/medusa": "*",
+    "medusa-fulfillment-manual": "*",
+    "medusa-interfaces": "*",
+    "medusa-payment-manual": "*",
+    "medusa-payment-stripe": "*",
+    "typeorm": "*"
+  },
+  "repository": "https://github.com/medusajs/medusa-starter-default.git",
+  "keywords": [
+    "sqlite",
+    "ecommerce",
+    "headless",
+    "medusa"
+  ],
+  "devDependencies": {
+    "@babel/cli": "*",
+    "@babel/core": "*",
+    "@babel/preset-typescript": "*",
+    "@medusajs/medusa-cli": "*",
+    "babel-preset-medusa-package": "*"
+  }
+}

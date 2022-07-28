@@ -1,0 +1,31 @@
+{
+  "private": true,
+  "name": "ui-remix",
+  "description": "",
+  "license": "",
+  "scripts": {
+    "build": "npm run build:css && npx remix build",
+    "build:css": "tailwindcss -m -i ./app/styles/tailwind.css -o app/tailwind.css --config ./tailwind.config.js",
+    "dev": "concurrently \"npm run dev:css\" \"npx remix dev\"",
+    "dev:css": "tailwindcss -w -i ./app/styles/tailwind.css -o app/tailwind.css --config ./tailwind.config.js",
+    "postinstall": "npx remix setup node",
+    "start": "npx remix-serve build"
+  },
+  "dependencies": {
+    "@remix-run/react": "*",
+    "@remix-run/serve": "*",
+    "react": "*",
+    "react-dom": "*",
+    "remix": "*"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "typescript": "*"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "sideEffects": false
+}

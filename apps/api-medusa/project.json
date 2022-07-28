@@ -1,0 +1,29 @@
+{
+  "root": "apps/api-medusa",
+  "sourceRoot": "apps/api-medusa/src",
+  "projectType": "application",
+  "targets": {
+    "serve": {
+      "executor": "@nrwl/workspace:run-commands",
+      "options": {
+        "command": "yarn && yarn start",
+        "cwd": "apps/api-medusa"
+      }
+    },
+    "build": {
+      "executor": "@nrwl/workspace:run-commands",
+      "options": {
+        "command": "yarn && yarn build",
+        "cwd": "apps/api-medusa"
+      }
+    },
+    "seed": {
+      "executor": "@nrwl/workspace:run-commands",
+      "options": {
+        "command": "yarn && yarn seed",
+        "cwd": "apps/api-medusa"
+      }
+    }
+  },
+  "tags": []
+}
